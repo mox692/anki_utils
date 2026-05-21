@@ -3,7 +3,8 @@ import json
 import requests
 
 # MODEL = "hf.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M"
-MODEL = "qwen2.5:1.5b"
+# MODEL = "qwen2.5:1.5b"
+MODEL = "gemma3:12b"
 OLLAMA_URL = "http://localhost:11434/api/chat"
 
 SYSTEM_PROMPT = """
