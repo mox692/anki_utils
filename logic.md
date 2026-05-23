@@ -1,6 +1,6 @@
 下記を実行するbinaryを作って. turso(sqliteみたいなやつ) dbのセットアップが何もないから, dbもセットアップする必要がある.
 
-- 
+- 作業対象のdeckを書き出す (バックアップ用途)
 - ankiのsyncを実行
 - ankiのdeckを1つ選ぶ (選ばれるdeckはprogramの中で定数で持つ)
 - そのdeckの中の全ての単語をfetch

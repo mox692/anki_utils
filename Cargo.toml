@@ -11,15 +11,4 @@ serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 hex = "0.4"
-
-[[bin]]
-name = "gen_text"
-path = "src/gen_text.rs"
-
-[[bin]]
-name = "anki"
-path = "src/anki.rs"
-
-[[bin]]
-name = "sync"
-path = "src/main.rs"
+chrono = "0.4"
