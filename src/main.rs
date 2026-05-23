@@ -36,7 +36,7 @@ struct FieldValue {
 struct CardInfo {
     #[serde(rename = "cardId")]
     card_id: i64,
-    note: i64,  // AnkiConnect returns "note" not "noteId"
+    note: i64, // AnkiConnect returns "note" not "noteId"
     interval: i64,
     #[serde(default)]
     lapses: i64,
@@ -186,13 +186,26 @@ The English field must be a complete sentence.
         let json: Value = response.json()?;
 
         if let Some(content) = json["message"]["content"].as_str() {
-            println!("    Debug - LLM response (attempt {}): {}", attempt + 1, content);
+            println!(
+                "    Debug - LLM response (attempt {}): {}",
+                attempt + 1,
+                content
+            );
             if let Ok(result) = serde_json::from_str::<SentenceResult>(content) {
                 let word_count = result.english.split_whitespace().count();
-                let contains_word = result.english.to_lowercase().contains(&clean_word.to_lowercase());
+                let contains_word = result
+                    .english
+                    .to_lowercase()
+                    .contains(&clean_word.to_lowercase());
 
-                println!("    Debug - Parsed: japanese={}, english={}", result.japanese, result.english);
-                println!("    Debug - Word count: {}, Contains word '{}': {}", word_count, clean_word, contains_word);
+                println!(
+                    "    Debug - Parsed: japanese={}, english={}",
+                    result.japanese, result.english
+                );
+                println!(
+                    "    Debug - Word count: {}, Contains word '{}': {}",
+                    word_count, clean_word, contains_word
+                );
 
                 if !result.japanese.is_empty()
                     && !result.english.is_empty()
@@ -218,11 +231,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let client = Client::new();
 
-    println!("Step 1: Syncing Anki...");
+    println!("Step 1: Backing up target deck...");
+    let backup_dir = std::env::current_dir()?.join("backup");
+    std::fs::create_dir_all(&backup_dir)?;
+    let backup_file = format!("{}_backup.apkg", TARGET_DECK);
+    let backup_path = backup_dir.join(&backup_file);
+    invoke::<Value>(
+        &client,
+        "exportPackage",
+        json!({
+            "deck": TARGET_DECK,
+            "path": backup_path.to_string_lossy().to_string(),
+            "includeSched": true
+        }),
+    )?;
+    println!("Deck backup saved to: backup/{}", backup_file);
+
+    println!("\nStep 2: Syncing Anki...");
     sync_anki(&client)?;
     println!("Sync complete.");
 
-    println!("\nStep 2: Setting up database...");
+    println!("\nStep 3: Setting up database...");
     let db = Connection::open("anki_mastery.db")?;
 
     db.execute(
@@ -246,7 +275,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Database setup complete.");
 
-    println!("\nStep 3: Fetching notes from deck '{}'...", TARGET_DECK);
+    println!("\nStep 4: Fetching notes from deck '{}'...", TARGET_DECK);
     let query = format!("deck:\"{}\"", TARGET_DECK);
     let note_ids: Vec<i64> = invoke(&client, "findNotes", json!({ "query": query }))?;
     println!("Found {} notes.", note_ids.len());
@@ -258,11 +287,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let notes: Vec<NoteInfo> = invoke(&client, "notesInfo", json!({ "notes": note_ids }))?;
 
-    println!("\nStep 4: Processing notes and updating database...");
+    println!("\nStep 5: Processing notes and updating database...");
     for note in &notes {
         // Debug: Print all field names
         if notes.iter().position(|n| n.note_id == note.note_id) == Some(0) {
-            println!("Debug - Available field names: {:?}", note.fields.keys().collect::<Vec<_>>());
+            println!(
+                "Debug - Available field names: {:?}",
+                note.fields.keys().collect::<Vec<_>>()
+            );
         }
 
         let word_raw = note
@@ -286,7 +318,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let meaning = clean_html_entities(&meaning_raw);
 
         if word.is_empty() {
-            println!("Debug - Skipping note {} due to empty word field", note.note_id);
+            println!(
+                "Debug - Skipping note {} due to empty word field",
+                note.note_id
+            );
             continue;
         }
 
@@ -309,7 +344,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    println!("\nStep 5: Calculating mastery scores...");
+    println!("\nStep 6: Calculating mastery scores...");
     let card_ids: Vec<i64> = invoke(&client, "findCards", json!({ "query": query }))?;
     let cards: Vec<CardInfo> = invoke(&client, "cardsInfo", json!({ "cards": card_ids }))?;
 
@@ -331,19 +366,23 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Mastery scores updated.");
 
-    println!("\nStep 6: Generating sentences for low-mastery cards...");
+    println!("\nStep 7: Generating sentences for low-mastery cards...");
 
     // Debug: Check all cards in database
     let total_cards: i64 = db.query_row("SELECT COUNT(*) FROM flashcards", [], |row| row.get(0))?;
     println!("Debug - Total cards in database: {}", total_cards);
 
-    let mut debug_stmt = db.prepare("SELECT note_id, word, mastery_score FROM flashcards LIMIT 5")?;
+    let mut debug_stmt =
+        db.prepare("SELECT note_id, word, mastery_score FROM flashcards LIMIT 5")?;
     let debug_cards: Vec<(i64, String, Option<f64>)> = debug_stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
 
     for (note_id, word, score) in debug_cards {
-        println!("Debug - note_id: {}, word: {}, mastery_score: {:?}", note_id, word, score);
+        println!(
+            "Debug - note_id: {}, word: {}, mastery_score: {:?}",
+            note_id, word, score
+        );
     }
 
     let mut stmt = db.prepare(
@@ -396,7 +435,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    println!("\nStep 7: Final sync...");
+    println!("\nStep 8: Final sync...");
     sync_anki(&client)?;
     println!("Sync complete.");
 
