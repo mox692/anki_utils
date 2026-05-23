@@ -18,6 +18,8 @@ pub struct NoteInfo {
     pub note_id: i64,
     #[serde(default)]
     pub fields: HashMap<String, FieldValue>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -12,6 +12,7 @@ use mastery::calculate_note_to_mastery;
 use reqwest::blocking::Client;
 use rusqlite::Connection;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::error::Error;
 use utils::{clean_html_entities, compute_hash};
 
@@ -181,13 +182,65 @@ fn extract_word_and_meaning(note: &NoteInfo) -> Option<(String, String)> {
 
 fn calculate_and_update_mastery(client: &Client, db: &Connection) -> Result<(), Box<dyn Error>> {
     println!("\nStep 6: Calculating mastery scores...");
-    let query = format!("deck:\"{}\"", TARGET_DECK);
+    let output_deck = format!("{}-output", TARGET_DECK);
+
+    // output deckが存在するか確認
+    let deck_names: Vec<String> = invoke(client, "deckNames", json!({}))?;
+    if !deck_names.contains(&output_deck) {
+        println!(
+            "Output deck '{}' does not exist yet. Skipping mastery calculation.",
+            output_deck
+        );
+        return Ok(());
+    }
+
+    let query = format!("deck:\"{}\"", output_deck);
     let card_ids: Vec<i64> = invoke(client, "findCards", json!({ "query": query }))?;
+
+    if card_ids.is_empty() {
+        println!("No cards found in output deck. Skipping mastery calculation.");
+        return Ok(());
+    }
+
     let cards: Vec<CardInfo> = invoke(client, "cardsInfo", json!({ "cards": card_ids }))?;
 
-    let note_to_mastery = calculate_note_to_mastery(&cards);
-    update_mastery_scores(db, &note_to_mastery)?;
-    println!("Mastery scores updated.");
+    // output deckのノートから元のnote_idへのマッピングを構築
+    let output_note_ids: Vec<i64> = cards.iter().map(|c| c.note).collect();
+    let output_notes: Vec<NoteInfo> =
+        invoke(client, "notesInfo", json!({ "notes": output_note_ids }))?;
+
+    // tag "source_note_XXX" から元のnote_idを抽出し、output_note_id -> source_note_idのマップを作成
+    let mut output_to_source: HashMap<i64, i64> = HashMap::new();
+    for note in &output_notes {
+        for tag in &note.tags {
+            if let Some(source_id_str) = tag.strip_prefix("source_note_") {
+                if let Ok(source_id) = source_id_str.parse::<i64>() {
+                    output_to_source.insert(note.note_id, source_id);
+                    break;
+                }
+            }
+        }
+    }
+
+    // output deckのカードからmastery scoreを計算
+    let output_note_to_mastery = calculate_note_to_mastery(&cards);
+
+    // 元のnote_idに対してmastery scoreを設定
+    let mut source_note_to_mastery: HashMap<i64, f64> = HashMap::new();
+    for (output_note_id, score) in output_note_to_mastery {
+        if let Some(&source_note_id) = output_to_source.get(&output_note_id) {
+            source_note_to_mastery
+                .entry(source_note_id)
+                .and_modify(|s| *s = s.max(score))
+                .or_insert(score);
+        }
+    }
+
+    update_mastery_scores(db, &source_note_to_mastery)?;
+    println!(
+        "Mastery scores updated for {} notes.",
+        source_note_to_mastery.len()
+    );
     Ok(())
 }
 
@@ -253,6 +306,7 @@ fn generate_and_add_note(
 
     match generate_sentence(client, word, meaning) {
         Ok(result) if !result.japanese.is_empty() && !result.english.is_empty() => {
+            let source_tag = format!("source_note_{}", note_id);
             let note_params = json!({
                 "note": {
                     "deckName": output_deck,
@@ -261,7 +315,7 @@ fn generate_and_add_note(
                         "Front": result.japanese,
                         "Back": result.english
                     },
-                    "tags": ["generated"]
+                    "tags": ["generated", source_tag]
                 }
             });
 
