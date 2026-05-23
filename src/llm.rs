@@ -91,26 +91,12 @@ The English field must be a complete sentence.
                 content
             );
             if let Ok(result) = serde_json::from_str::<SentenceResult>(content) {
-                let word_count = result.english.split_whitespace().count();
-                let contains_word = result
-                    .english
-                    .to_lowercase()
-                    .contains(&clean_word.to_lowercase());
-
                 println!(
                     "    Debug - Parsed: japanese={}, english={}",
                     result.japanese, result.english
                 );
-                println!(
-                    "    Debug - Word count: {}, Contains word '{}': {}",
-                    word_count, clean_word, contains_word
-                );
 
-                if !result.japanese.is_empty()
-                    && !result.english.is_empty()
-                    && contains_word
-                    && word_count >= 5
-                {
+                if !result.japanese.is_empty() && !result.english.is_empty() {
                     return Ok(result);
                 }
             } else {

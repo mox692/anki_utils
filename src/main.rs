@@ -32,6 +32,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Step 3: データベースのセットアップ
     let db = setup_db()?;
 
+    // Step 3.5: sync後のdeckとdbの状態を比較し、dbを更新
+    sync_database_with_anki(&client, &db)?;
+
     // Step 4 & 5: そのdeckの中の全ての単語をfetchし、dbに記録
     let notes = fetch_and_store_notes(&client, &db)?;
     if notes.is_empty() {
@@ -79,6 +82,42 @@ fn setup_db() -> Result<Connection, Box<dyn Error>> {
     setup_database(&db)?;
     println!("Database setup complete.");
     Ok(db)
+}
+
+fn sync_database_with_anki(client: &Client, db: &Connection) -> Result<(), Box<dyn Error>> {
+    println!("\nStep 3.5: Syncing database with Anki state...");
+
+    // Ankiから現在のTARGET_DECKのnote IDsを取得
+    let query = format!("deck:\"{}\"", TARGET_DECK);
+    let current_note_ids: Vec<i64> = invoke(client, "findNotes", json!({ "query": query }))?;
+
+    println!("Current notes in Anki: {}", current_note_ids.len());
+
+    // DBから全てのnote IDsを取得
+    let mut stmt = db.prepare("SELECT note_id FROM flashcards")?;
+    let db_note_ids: Vec<i64> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    println!("Notes in database: {}", db_note_ids.len());
+
+    // DBにあるがAnkiにないnote IDsを特定
+    let mut deleted_count = 0;
+    for db_note_id in db_note_ids {
+        if !current_note_ids.contains(&db_note_id) {
+            println!("  Deleting note_id {} (no longer in Anki)", db_note_id);
+            db.execute("DELETE FROM flashcards WHERE note_id = ?", [db_note_id])?;
+            deleted_count += 1;
+        }
+    }
+
+    if deleted_count > 0 {
+        println!("Deleted {} obsolete entries from database.", deleted_count);
+    } else {
+        println!("Database is already in sync with Anki.");
+    }
+
+    Ok(())
 }
 
 fn fetch_and_store_notes(

@@ -2,11 +2,13 @@
 
 - 作業対象のdeckを書き出す (バックアップ用途)
 - ankiのsyncを実行
+- sync後のdeckと, dbの状態を比較し, dbをsyncの状態に合わせるように更新
+  - dbにはあるが, sync後なくなっているflashcardや, deck自体がなくなっている場合は, 関連するDBのエントリも削除する.
 - ankiのdeckを1つ選ぶ (選ばれるdeckはprogramの中で定数で持つ)
 - そのdeckの中の全ての単語をfetch
 - それぞれの単語に関して下記を実施
 	- 単語のhash値をとる
-	- turso (sqlite) dbのtableを見て, 単語がすでに記録されているかを確認
+	- turso (sqlite) dbのtableを見て, 単語がすでにdbに記録されているかを確認
 	- 記録されていない場合, dbにinsertする
 - そのdeckに対応するdb内部のエントリに関して, 下記を実施
 	- そのflashcardの習熟度を計算
